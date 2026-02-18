@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+
+{% block title %}Assignments - Mini LMS{% endblock %}
+
+{% block content %}
+<h1 id="course-title">Loading...</h1>
+<p id="course-description"></p>
+
+<div id="instructor-actions" style="display: none;">
+    <button onclick="addLesson()" class="btn">Add Lesson</button>
+    <button onclick="createAssignment()" class="btn">Create Assignment</button>
+</div>
+
+<h3>Lessons</h3>
+<div id="lessons-list"></div>
+
+<h3>Assignments</h3>
+<div id="assignments-list"></div>
+
+<a href="/courses/" class="btn" style="background: #6c757d;">Back to Courses</a>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const courseId = window.location.pathname.split('/')[2];
+    let userRole = '';
+
+    async function loadCourse() {
+        const token = localStorage.getItem('access_token');
+        if (!token) return window.location.href = '/';
+
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        userRole = payload.role;
+
+        const res = await fetch(`/api/courses/${courseId}/`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const course = await res.json();
+
+        document.getElementById('course-title').innerText = course.title;
+        document.getElementById('course-description').innerText = course.description;
+
+        if (userRole === 'INSTRUCTOR' && course.instructor === payload.username) {
+            document.getElementById('instructor-actions').style.display = 'block';
+        }
+
+        // Fetch Lessons
+        const lessonsRes = await fetch('/api/courses/lessons/', { headers: { 'Authorization': `Bearer ${token}` } });
+        const allLessons = await lessonsRes.json();
+        const courseLessons = allLessons.filter(l => l.course == courseId);
+
+        document.getElementById('lessons-list').innerHTML = courseLessons.map(l =>
+            `<div class="card">
+                <h4>${l.title}</h4>
+                <p>${l.content}</p>
+            </div>`
+        ).join('');
+
+        // Fetch Assignments
+        const assignmentsRes = await fetch('/api/courses/assignments/', { headers: { 'Authorization': `Bearer ${token}` } });
+        const allAssignments = await assignmentsRes.json();
+        const courseAssignments = allAssignments.filter(a => a.course == courseId);
+
+        document.getElementById('assignments-list').innerHTML = courseAssignments.map(a =>
+            `<div class="card">
+                <h4>${a.title}</h4>
+                <p>Due: ${new Date(a.due_date).toLocaleDateString()}</p>
+                ${userRole === 'STUDENT' ? `<button onclick="submitAssignment(${a.id})" class="btn">Submit</button>` : ''}
+            </div>`
+        ).join('');
+    }
+
+    async function addLesson() {
+        const title = prompt("Lesson Title:");
+        if (!title) return;
+        const content = prompt("Lesson Content:");
+
+        const token = localStorage.getItem('access_token');
+        await fetch('/api/courses/lessons/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ course: courseId, title, content })
+        });
+        loadCourse();
+    }
+
+    async function createAssignment() {
+        const title = prompt("Assignment Title:");
+        if (!title) return;
+        const description = prompt("Description:");
+        const dueDate = prompt("Due Date (YYYY-MM-DD):");
+
+        const token = localStorage.getItem('access_token');
+        await fetch('/api/courses/assignments/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ course: courseId, title, description, due_date: dueDate })
+        });
+        loadCourse();
+    }
+
+    function submitAssignment(assignmentId) {
+        const content = prompt("Submission Link/Content:");
+        if (!content) return;
+
+        const token = localStorage.getItem('access_token');
+        fetch('/api/courses/submissions/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ assignment: assignmentId, content })
+        }).then(res => {
+            if (res.ok) alert('Submitted!');
+            else alert('Failed.');
+        });
+    }
+
+    loadCourse();
+</script>
+<style>
+    .card {
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+        background: #fafafa;
+        text-align: left;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+
+{% block title %}Courses - Mini LMS{% endblock %}
+
+{% block content %}
+<h1>Courses</h1>
+
+<div id="instructor-section" style="display: none;">
+    <h3>Your Courses (Instructor)</h3>
+    <button onclick="window.location.href='/create_course/'" class="btn">Create New Course</button>
+    <div id="instructor-courses"></div>
+</div>
+
+<div id="student-section" style="display: none;">
+    <h3>Your Enrolled Courses</h3>
+    <div id="enrolled-courses"></div>
+
+    <h3>Available Courses</h3>
+    <div id="available-courses"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function fetchWithAuth(url, options = {}) {
+        const token = localStorage.getItem('access_token');
+        if (!token) window.location.href = '/';
+
+        const headers = { 'Authorization': `Bearer ${token}`, ...options.headers };
+        const response = await fetch(url, { ...options, headers });
+
+        if (response.status === 401) {
+            logout();
+        }
+        return response;
+    }
+
+    async function loadPage() {
+        const token = localStorage.getItem('access_token');
+        if (!token) return window.location.href = '/';
+
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        // Note: Navbar handles user info display now
+
+        if (payload.role === 'INSTRUCTOR') {
+            document.getElementById('instructor-section').style.display = 'block';
+            loadInstructorCourses();
+        } else {
+            document.getElementById('student-section').style.display = 'block';
+            loadStudentCourses();
+        }
+    }
+
+    async function loadInstructorCourses() {
+        const res = await fetchWithAuth('/api/courses/');
+        const courses = await res.json();
+        const div = document.getElementById('instructor-courses');
+        div.innerHTML = courses.map(c =>
+            `<div class="course-card">
+                <h4>${c.title}</h4>
+                <p>${c.description}</p>
+                <a href="/assignments/${c.id}/" class="btn">Manage</a>
+                <a href="/attendance/${c.id}/" class="btn" style="background: #28a745;">Attendance</a>
+            </div>`
+        ).join('');
+    }
+
+    async function loadStudentCourses() {
+        // 1. Fetch ALL courses
+        const allRes = await fetchWithAuth('/api/courses/');
+        const allCourses = await allRes.json();
+
+        // 2. Fetch Enrolled courses
+        const enrolledRes = await fetchWithAuth('/api/courses/enrolled/');
+        const enrolledCourses = await enrolledRes.json();
+
+        // Create a set of enrolled IDs for easy lookup
+        const enrolledIds = new Set(enrolledCourses.map(c => c.id));
+
+        // Render Enrolled Courses
+        const enrolledDiv = document.getElementById('enrolled-courses');
+        if (enrolledCourses.length === 0) {
+            enrolledDiv.innerHTML = '<p>You have not enrolled in any courses yet.</p>';
+        } else {
+            enrolledDiv.innerHTML = enrolledCourses.map(c =>
+                `<div class="course-card enrolled-card">
+                    <h4>${c.title}</h4>
+                    <p>${c.description}</p>
+                    <a href="/assignments/${c.id}/" class="btn">View Assignments</a>
+                    <a href="/attendance/${c.id}/" class="btn" style="background: #28a745;">Attendance</a>
+                </div>`
+            ).join('');
+        }
+
+        // Render Available Courses (All - Enrolled)
+        const availableDiv = document.getElementById('available-courses');
+        const availableCourses = allCourses.filter(c => !enrolledIds.has(c.id));
+
+        if (availableCourses.length === 0) {
+            availableDiv.innerHTML = '<p>No new courses available.</p>';
+        } else {
+            availableDiv.innerHTML = availableCourses.map(c =>
+                `<div class="course-card">
+                    <h4>${c.title}</h4>
+                    <p>${c.description}</p>
+                    <button onclick="enroll(${c.id})" class="btn">Enroll</button>
+                </div>`
+            ).join('');
+        }
+    }
+
+    async function enroll(courseId) {
+        const res = await fetchWithAuth(`/api/courses/${courseId}/enroll/`, { method: 'POST' });
+        if (res.ok) {
+            alert('Enrolled!');
+            window.location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.detail);
+        }
+    }
+
+    loadPage();
+</script>
+<style>
+    .course-card {
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+        text-align: left;
+    }
+
+    .enrolled-card {
+        border-left: 5px solid #28a745;
+    }
+</style>
+{% endblock %}

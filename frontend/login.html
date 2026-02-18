@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Mini LMS</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h2>Login</h2>
+        <form id="login-form">
+            <input type="text" id="username" placeholder="Username" required>
+            <input type="password" id="password" placeholder="Password" required>
+            <button type="submit" class="btn">Login</button>
+        </form>
+        <p>Don't have an account? <a href="/register">Register</a></p>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const messageDiv = document.getElementById('message');
+
+            try {
+                const response = await fetch('/api/token/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('access_token', data.access);
+                    localStorage.setItem('refresh_token', data.refresh);
+
+                    // Decode token to get role, or better yet, force backend to return it.
+                    // SimpleJWT default response doesn't include custom fields.
+                    // We'll rely on decoding the token payload which usually contains basic user info if configured, 
+                    // BUT by default it only has user_id. 
+                    // Let's trying decoding. If role isn't there, we need to customize TokenObtainPairSerializer.
+                    // For now, let's assume I will customize the serializer next to include role.
+
+                    window.location.href = '/dashboard';
+                } else {
+                    messageDiv.innerText = data.detail || 'Login failed';
+                    messageDiv.style.color = 'red';
+                }
+            } catch (error) {
+                messageDiv.innerText = 'An error occurred';
+                messageDiv.style.color = 'red';
+            }
+        });
+    </script>
+</body>
+
+</html>

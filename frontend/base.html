@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Mini LMS{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="container nav-container">
+            <a href="/dashboard/" class="nav-brand">Mini LMS</a>
+            <div class="nav-links">
+                <a href="/dashboard/">Dashboard</a>
+                <a href="/courses/">Courses</a>
+                <a href="#" onclick="logout()">Logout</a>
+            </div>
+            <div id="nav-user-info" style="color: white; margin-left: auto;"></div>
+        </div>
+    </nav>
+
+    <div class="container main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        // Common Auth Logic
+        const accessToken = localStorage.getItem('access_token');
+        if (!accessToken && window.location.pathname !== '/' && window.location.pathname !== '/register/') {
+            window.location.href = '/';
+        }
+
+        if (accessToken) {
+            try {
+                const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                const userInfoDiv = document.getElementById('nav-user-info');
+                if (userInfoDiv) {
+                    userInfoDiv.innerText = `${payload.username} (${payload.role})`;
+                }
+            } catch (e) {
+                console.error("Invalid token");
+                logout();
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = '/';
+        }
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+
+</html>

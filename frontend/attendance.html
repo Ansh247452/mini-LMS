@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block title %}Attendance - Mini LMS{% endblock %}
+
+{% block content %}
+<h1 id="course-title">Attendance</h1>
+
+<div id="instructor-section" style="display: none;">
+    <h3>Mark Attendance</h3>
+    <input type="date" id="attendance-date" required>
+    <button onclick="loadStudents()" class="btn">Load Students</button>
+    <div id="students-list"></div>
+    <button onclick="saveAttendance()" class="btn" id="save-btn" style="display: none;">Save Attendance</button>
+</div>
+
+<div id="student-section" style="display: none;">
+    <h3>Your Attendance Record</h3>
+    <table border="1" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="attendance-records"></tbody>
+    </table>
+</div>
+
+<div style="margin-top: 20px;">
+    <a href="/courses/" class="btn" style="background: #6c757d;">Back to Courses</a>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const courseId = window.location.pathname.split('/')[2];
+    let token = localStorage.getItem('access_token');
+
+    async function fetchWithAuth(url, options = {}) {
+        if (!token) window.location.href = '/';
+        const headers = { 'Authorization': `Bearer ${token}`, ...options.headers };
+        return fetch(url, { ...options, headers });
+    }
+
+    async function init() {
+        if (!token) return window.location.href = '/';
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        document.getElementById('attendance-date').valueAsDate = new Date();
+
+        // Fetch course details
+        const res = await fetchWithAuth(`/api/courses/${courseId}/`);
+        if (!res.ok) { alert('Error loading course'); return; }
+        const course = await res.json();
+        document.getElementById('course-title').innerText = `Attendance: ${course.title}`;
+
+        if (payload.role === 'INSTRUCTOR') {
+            document.getElementById('instructor-section').style.display = 'block';
+        } else {
+            document.getElementById('student-section').style.display = 'block';
+            loadStudentAttendance();
+        }
+    }
+
+    async function loadStudents() {
+        const date = document.getElementById('attendance-date').value;
+        if (!date) return alert("Select a date");
+
+        // Fetch students
+        const res = await fetchWithAuth(`/api/courses/${courseId}/students/`);
+        if (!res.ok) return alert('Failed to load students');
+        const students = await res.json();
+
+        // Fetch existing attendance for this date
+        const attRes = await fetchWithAuth(`/api/courses/attendance/?course=${courseId}&date=${date}`);
+        const existingAttendance = await attRes.json();
+        const attendanceMap = {};
+        existingAttendance.forEach(a => attendanceMap[a.student] = a.status);
+
+        const div = document.getElementById('students-list');
+        div.innerHTML = students.map(s => `
+                <div style="margin: 5px 0;">
+                    <label>
+                        <input type="checkbox" class="attendance-checkbox" 
+                            data-student-id="${s.id}" 
+                            ${attendanceMap[s.id] === 'ABSENT' ? '' : 'checked'}>
+                        ${s.username} (${s.email})
+                    </label>
+                </div>
+            `).join('');
+        document.getElementById('save-btn').style.display = 'block';
+    }
+
+    async function saveAttendance() {
+        const date = document.getElementById('attendance-date').value;
+        const checkboxes = document.querySelectorAll('.attendance-checkbox');
+        const attendanceData = [];
+
+        checkboxes.forEach(cb => {
+            attendanceData.push({
+                student: cb.dataset.studentId,
+                status: cb.checked ? 'PRESENT' : 'ABSENT'
+            });
+        });
+
+        await fetchWithAuth('/api/courses/attendance/mark_bulk/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                course: courseId,
+                date: date,
+                records: attendanceData
+            })
+        });
+        alert('Attendance Saved!');
+    }
+
+    async function loadStudentAttendance() {
+        const res = await fetchWithAuth(`/api/courses/attendance/?course=${courseId}`);
+        const records = await res.json();
+
+        const tbody = document.getElementById('attendance-records');
+        tbody.innerHTML = records.map(r => `
+                <tr>
+                    <td>${r.date}</td>
+                    <td style="color: ${r.status === 'PRESENT' ? 'green' : 'red'}">${r.status}</td>
+                </tr>
+             `).join('');
+    }
+
+    init();
+</script>
+{% endblock %}
